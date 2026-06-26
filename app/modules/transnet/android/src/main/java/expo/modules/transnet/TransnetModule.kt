@@ -162,7 +162,7 @@ class TransnetModule : Module() {
         val context = appContext.reactContext ?: throw Exception("React context is null")
 
         // Use app-specific external storage (no permission needed on Android 10+)
-        val downloadsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+        val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
           ?: throw Exception("Could not access external storage")
 
         // Create TransNet folder
