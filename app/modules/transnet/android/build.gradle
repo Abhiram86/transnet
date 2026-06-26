@@ -6,6 +6,10 @@ plugins {
 group = 'expo.modules.transnet'
 version = '0.1.0'
 
+repositories {
+  maven { url = uri("libs/repo") }
+}
+
 android {
   namespace "expo.modules.transnet"
   defaultConfig {
@@ -18,5 +22,5 @@ android {
 }
 
 dependencies {
-  implementation files('libs/transnetcore.aar')
+  implementation 'expo.modules:transnetcore:0.1.0'
 }
