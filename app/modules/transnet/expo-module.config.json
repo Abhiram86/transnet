@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android", "web"],
+  "apple": {
+    "modules": ["TransnetModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.transnet.TransnetModule"]
+  }
+}

@@ -1,0 +1,26 @@
+# Go compilation files
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+
+# Go specific
+vendor/
+go.sum
+go.mod
+
+# IDEs and Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Project specific built files
+*.aar
+.transnet-id
