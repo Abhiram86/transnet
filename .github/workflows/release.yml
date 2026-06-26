@@ -47,7 +47,7 @@ jobs:
         working-directory: app/android
         run: |
           chmod +x ./gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleRelease
 
       - name: Extract version from tag
         id: version
@@ -58,7 +58,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p artifacts
-          cp app/android/app/build/outputs/apk/debug/app-debug.apk \
+          cp app/android/app/build/outputs/apk/release/app-release.apk \
             artifacts/transnet-${{ steps.version.outputs.version }}.apk
 
       - name: Create GitHub Release
