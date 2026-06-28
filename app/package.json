@@ -44,5 +44,8 @@
     "web": "expo start --web",
     "lint": "expo lint"
   },
-  "private": true
+  "private": true,
+  "pnpm": {
+    "onlyBuiltDependencies": ["msgpackr-extract"]
+  }
 }

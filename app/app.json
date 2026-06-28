@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "app",
-    "slug": "app",
+    "name": "TransNet",
+    "slug": "transnet",
     "version": "0.1.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/transnet_square.png",
     "scheme": "app",
     "userInterfaceStyle": "automatic",
     "ios": {
@@ -14,9 +14,9 @@
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "foregroundImage": "./assets/images/transnet_square.png",
+        "backgroundImage": "./assets/images/transnet_square.png",
+        "monochromeImage": "./assets/images/transnet_square.png"
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.anonymous.app",
@@ -36,9 +36,9 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#000000",
           "android": {
-            "image": "./assets/images/splash-icon.png",
+            "image": "./assets/images/transnet_splash.png",
             "imageWidth": 76
           }
         }
