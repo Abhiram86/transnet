@@ -266,9 +266,11 @@ export default function SendScreen() {
           <View style={styles.progressBarBg}>
             <View style={[styles.progressBarFill, { width: `${progress.percentDone}%` }]} />
           </View>
-          <Text style={styles.progressText}>
-            File {progress.currentFileIdx + 1}/{progress.totalFiles} — {progress.percentDone.toFixed(0)}%
-          </Text>
+          <View style={styles.progressRow}>
+            <Text style={styles.progressIdx}>({progress.currentFileIdx + 1}/{progress.totalFiles})</Text>
+            <Text style={styles.progressName} numberOfLines={1}>{progress.currentFileName}</Text>
+            <Text style={styles.progressPct}>{progress.percentDone.toFixed(0)}%</Text>
+          </View>
         </View>
       )}
 
@@ -510,8 +512,23 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent,
     borderRadius: 4,
   },
-  progressText: {
+  progressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  progressIdx: {
     color: Colors.textMuted,
     fontSize: 13,
+  },
+  progressName: {
+    color: Colors.textMuted,
+    fontSize: 13,
+    flex: 1,
+  },
+  progressPct: {
+    color: Colors.textMuted,
+    fontSize: 13,
+    fontWeight: '600',
   },
 });

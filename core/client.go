@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -41,8 +42,10 @@ func SendFile(ip string, port string, filePathsStr string) error {
 		setClientStatus("transferring")
 
 		for i, filePath := range filePaths {
+			fileName := filepath.Base(filePath)
 			updateClientProgress(func(p *Progress) {
 				p.CurrentFileIdx = i
+				p.CurrentFileName = fileName
 			})
 
 			err := sendSingleFile(conn, filePath)
@@ -105,6 +108,7 @@ func sendSingleFile(conn net.Conn, filePath string) error {
 			// Throttle progress updates a bit so you do not spam locks/UI.
 			if time.Since(lastProgressUpdate) >= 50*time.Millisecond || sent == fileSize {
 				updateClientProgress(func(p *Progress) {
+					p.CurrentFileName = fileInfo.Name()
 					p.CurrentBytes = int64(sent)
 					p.TotalBytes = int64(fileSize)
 					if fileSize > 0 {

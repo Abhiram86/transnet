@@ -6,11 +6,12 @@ import (
 )
 
 type Progress struct {
-	TotalFiles     int
-	CurrentFileIdx int
-	TotalBytes     int64
-	CurrentBytes   int64
-	PercentDone    float64
+	TotalFiles      int
+	CurrentFileIdx  int
+	CurrentFileName string
+	TotalBytes      int64
+	CurrentBytes    int64
+	PercentDone     float64
 }
 
 var (
@@ -55,14 +56,14 @@ func GetClientProgressStr() string {
 	clientProgressMutex.RLock()
 	defer clientProgressMutex.RUnlock()
 	p := clientCurrentProgress
-	return fmt.Sprintf("%d<|sep|>%d<|sep|>%d<|sep|>%d<|sep|>%.1f",
-		p.TotalFiles, p.CurrentFileIdx, p.TotalBytes, p.CurrentBytes, p.PercentDone)
+	return fmt.Sprintf("%d<|sep|>%d<|sep|>%s<|sep|>%d<|sep|>%d<|sep|>%.1f",
+		p.TotalFiles, p.CurrentFileIdx, p.CurrentFileName, p.TotalBytes, p.CurrentBytes, p.PercentDone)
 }
 
 func GetServerProgressStr() string {
 	serverProgressMutex.RLock()
 	defer serverProgressMutex.RUnlock()
 	p := serverCurrentProgress
-	return fmt.Sprintf("%d<|sep|>%d<|sep|>%d<|sep|>%d<|sep|>%.1f",
-		p.TotalFiles, p.CurrentFileIdx, p.TotalBytes, p.CurrentBytes, p.PercentDone)
+	return fmt.Sprintf("%d<|sep|>%d<|sep|>%s<|sep|>%d<|sep|>%d<|sep|>%.1f",
+		p.TotalFiles, p.CurrentFileIdx, p.CurrentFileName, p.TotalBytes, p.CurrentBytes, p.PercentDone)
 }

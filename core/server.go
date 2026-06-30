@@ -38,15 +38,15 @@ func handleConnection(conn net.Conn, saveDir string) error {
 		setServerStatus("transferring")
 
 		for i := range numFiles {
-			updateServerProgress(func(p *Progress) {
-				p.CurrentFileIdx = i
-			})
-
-			err := receiveSingleFile(reader, saveDir)
+			fileName, err := receiveSingleFile(reader, saveDir)
 			if err != nil {
 				setServerStatus("error: " + err.Error())
 				return
 			}
+			updateServerProgress(func(p *Progress) {
+				p.CurrentFileIdx = i
+				p.CurrentFileName = fileName
+			})
 			fmt.Printf("File %d/%d received\n", i+1, numFiles)
 		}
 
@@ -56,25 +56,25 @@ func handleConnection(conn net.Conn, saveDir string) error {
 	return nil
 }
 
-func receiveSingleFile(reader *bufio.Reader, saveDir string) error {
+func receiveSingleFile(reader *bufio.Reader, saveDir string) (string, error) {
 	header, err := reader.ReadString('\n')
 	if err != nil {
-		return fmt.Errorf("reading header: %v", err)
+	return "", fmt.Errorf("reading header: %v", err)
 	}
 
 	details := strings.Split(strings.TrimSpace(header), "<|sep|>")
 	if len(details) < 2 {
-		return fmt.Errorf("invalid header format")
+		return "", fmt.Errorf("invalid header format")
 	}
 	fileName := filepath.Base(details[0])
 	fileSize, err := strconv.ParseInt(details[1], 10, 64)
 	if err != nil {
-		return fmt.Errorf("invalid file size: %v", err)
+		return "", fmt.Errorf("invalid file size: %v", err)
 	}
 
 	outFile, err := os.Create(saveDir + "/" + fileName)
 	if err != nil {
-		return fmt.Errorf("creating file: %v", err)
+		return "", fmt.Errorf("creating file: %v", err)
 	}
 	defer outFile.Close()
 
@@ -97,10 +97,10 @@ func receiveSingleFile(reader *bufio.Reader, saveDir string) error {
 			for writtenTotal < n {
 				written, writeErr := outFile.Write(buf[writtenTotal:n])
 				if writeErr != nil {
-					return fmt.Errorf("writing file: %w", writeErr)
+				return "", fmt.Errorf("writing file: %w", writeErr)
 				}
 				if written == 0 {
-					return fmt.Errorf("writing file: wrote 0 bytes without error")
+				return "", fmt.Errorf("writing file: wrote 0 bytes without error")
 				}
 				writtenTotal += written
 			}
@@ -109,6 +109,7 @@ func receiveSingleFile(reader *bufio.Reader, saveDir string) error {
 
 			if time.Since(lastProgressUpdate) >= 50*time.Millisecond || received == fileSize {
 				updateServerProgress(func(p *Progress) {
+					p.CurrentFileName = fileName
 					p.CurrentBytes = received
 					p.TotalBytes = fileSize
 					if fileSize > 0 {
@@ -126,7 +127,7 @@ func receiveSingleFile(reader *bufio.Reader, saveDir string) error {
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("reading data: %w", err)
+			return "", fmt.Errorf("reading data: %w", err)
 		}
 	}
 
@@ -136,7 +137,7 @@ func receiveSingleFile(reader *bufio.Reader, saveDir string) error {
 		p.PercentDone = 100
 	})
 
-	return nil
+	return fileName, nil
 }
 
 func StartServer(port, saveDir string) (string, error) {
