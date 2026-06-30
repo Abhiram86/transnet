@@ -15,7 +15,6 @@ import (
 var activeListener net.Listener
 
 func handleConnection(conn net.Conn, saveDir string) error {
-	defer conn.Close()
 	conn.SetDeadline(time.Now().Add(5 * time.Minute))
 
 	reader := bufio.NewReader(conn)
@@ -30,13 +29,29 @@ func handleConnection(conn net.Conn, saveDir string) error {
 		return fmt.Errorf("invalid file count: %v", err)
 	}
 
-	for i := 0; i < numFiles; i++ {
-		err := receiveSingleFile(reader, saveDir)
-		if err != nil {
-			return fmt.Errorf("file %d: %v", i+1, err)
+	updateServerProgress(func(p *Progress) {
+		p.TotalFiles = numFiles
+	})
+	go func() {
+		defer conn.Close()
+
+		setServerStatus("transferring")
+
+		for i := range numFiles {
+			updateServerProgress(func(p *Progress) {
+				p.CurrentFileIdx = i
+			})
+
+			err := receiveSingleFile(reader, saveDir)
+			if err != nil {
+				setServerStatus("error: " + err.Error())
+				return
+			}
+			fmt.Printf("File %d/%d received\n", i+1, numFiles)
 		}
-		fmt.Printf("File %d/%d received\n", i+1, numFiles)
-	}
+
+		setServerStatus("done")
+	}()
 
 	return nil
 }
@@ -63,10 +78,64 @@ func receiveSingleFile(reader *bufio.Reader, saveDir string) error {
 	}
 	defer outFile.Close()
 
-	_, err = io.CopyN(outFile, reader, fileSize)
-	if err != nil {
-		return fmt.Errorf("reading data: %v", err)
+	buf := make([]byte, 32*1024)
+
+	var received int64
+	lastProgressUpdate := time.Now()
+
+	for received < fileSize {
+		remaining := fileSize - received
+		readSize := len(buf)
+		if remaining < int64(readSize) {
+			readSize = int(remaining)
+		}
+
+		n, err := io.ReadFull(reader, buf[:readSize])
+
+		if n > 0 {
+			writtenTotal := 0
+			for writtenTotal < n {
+				written, writeErr := outFile.Write(buf[writtenTotal:n])
+				if writeErr != nil {
+					return fmt.Errorf("writing file: %w", writeErr)
+				}
+				if written == 0 {
+					return fmt.Errorf("writing file: wrote 0 bytes without error")
+				}
+				writtenTotal += written
+			}
+
+			received += int64(n)
+
+			if time.Since(lastProgressUpdate) >= 50*time.Millisecond || received == fileSize {
+				updateServerProgress(func(p *Progress) {
+					p.CurrentBytes = received
+					p.TotalBytes = fileSize
+					if fileSize > 0 {
+						p.PercentDone = float64(received) * 100 / float64(fileSize)
+					} else {
+						p.PercentDone = 100
+					}
+				})
+
+				lastProgressUpdate = time.Now()
+			}
+		}
+
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("reading data: %w", err)
+		}
 	}
+
+	updateServerProgress(func(p *Progress) {
+		p.CurrentBytes = fileSize
+		p.TotalBytes = fileSize
+		p.PercentDone = 100
+	})
+
 	return nil
 }
 
@@ -80,6 +149,7 @@ func StartServer(port, saveDir string) (string, error) {
 		return "", fmt.Errorf("Error starting server: %v", err)
 	}
 	activeListener = listener
+	setServerStatus("listening")
 	defer func() {
 		listener.Close()
 		activeListener = nil
@@ -90,12 +160,23 @@ func StartServer(port, saveDir string) (string, error) {
 		return "", fmt.Errorf("Error accepting connection: %v", err)
 	}
 
-	err = handleConnection(conn, saveDir)
-	if err != nil {
-		return "", fmt.Errorf("transfer failed: %v", err)
-	}
+	handleConnection(conn, saveDir)
 
 	return "Transfer complete", nil
+}
+
+func GetServerProgress() Progress {
+	serverProgressMutex.RLock()
+	defer serverProgressMutex.RUnlock()
+
+	return serverCurrentProgress
+}
+
+func GetServerStatus() string {
+	serverStatusMutex.RLock()
+	defer serverStatusMutex.RUnlock()
+
+	return serverStatus
 }
 
 func StopServer() error {

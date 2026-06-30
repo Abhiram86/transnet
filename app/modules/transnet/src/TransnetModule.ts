@@ -2,6 +2,25 @@ import { requireNativeModule } from 'expo';
 import { Platform } from 'react-native';
 import type { TransnetModuleEvents } from './Transnet.types';
 
+export type TransferProgress = {
+  totalFiles: number;
+  currentFileIdx: number;
+  totalBytes: number;
+  currentBytes: number;
+  percentDone: number;
+};
+
+export function parseProgressStr(raw: string): TransferProgress {
+  const parts = raw.split('<|sep|>');
+  return {
+    totalFiles: parseInt(parts[0], 10) || 0,
+    currentFileIdx: parseInt(parts[1], 10) || 0,
+    totalBytes: parseInt(parts[2], 10) || 0,
+    currentBytes: parseInt(parts[3], 10) || 0,
+    percentDone: parseFloat(parts[4]) || 0,
+  };
+}
+
 class TransnetModuleStub {
   testBridge = async (_value: string): Promise<string> => 'stub';
   initCore = async (): Promise<string> => 'stub';
@@ -13,6 +32,10 @@ class TransnetModuleStub {
   startServer = async (_port: string): Promise<string> => 'stub';
   stopServer = async (): Promise<string> => 'stub';
   sendFile = async (_ip: string, _port: string, _filePathsStr: string): Promise<string> => 'stub';
+  getClientProgress = async (): Promise<string> => '0<|sep|>0<|sep|>0<|sep|>0<|sep|>0';
+  getServerProgress = async (): Promise<string> => '0<|sep|>0<|sep|>0<|sep|>0<|sep|>0';
+  getClientStatus = async (): Promise<string> => '';
+  getServerStatus = async (): Promise<string> => '';
 }
 
 const Transnet = Platform.OS === 'web'

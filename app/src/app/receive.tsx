@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming, Easing } from 'react-native-reanimated';
-import Transnet from '../../modules/transnet/src/TransnetModule';
+import Transnet, { parseProgressStr, TransferProgress } from '../../modules/transnet/src/TransnetModule';
 import { Colors } from '../constants/theme';
 import { StepIndicator } from '../components/StepIndicator';
 
@@ -43,22 +43,57 @@ export default function ReceiveScreen() {
   const [step, setStep] = useState<Step>('ready');
   const [status, setStatus] = useState('Tap below to start');
   const [senderName, setSenderName] = useState('');
+  const [progress, setProgress] = useState<TransferProgress | null>(null);
+  const [isReceiving, setIsReceiving] = useState(false);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stepIndex = step === 'ready' ? 0 : step === 'waiting' ? 1 : 2;
+
+  useEffect(() => {
+    if (!isReceiving) return;
+
+    pollingRef.current = setInterval(async () => {
+      try {
+        const [rawProgress, rawStatus] = await Promise.all([
+          Transnet.getServerProgress(),
+          Transnet.getServerStatus(),
+        ]);
+        setProgress(parseProgressStr(rawProgress));
+
+        if (rawStatus === 'done') {
+          setIsReceiving(false);
+          setProgress(prev => prev ? { ...prev, percentDone: 100 } : null);
+          setStatus('Transfer complete!');
+          setStep('done');
+        } else if (rawStatus.startsWith('error:')) {
+          setIsReceiving(false);
+          setProgress(null);
+          setStatus('Transfer failed. Tap to try again.');
+          setStep('ready');
+          Alert.alert('Error', rawStatus.slice(7));
+        }
+      } catch {}
+    }, 200);
+
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, [isReceiving]);
 
   const startReceiving = async () => {
     setStep('waiting');
     setStatus('Listening for incoming connections...');
+    setProgress(null);
     try {
       const offerInfo = await Transnet.listenFileTransfer();
       const [name, , senderAddr] = offerInfo.split('<|sep|>');
       setSenderName(name);
       setStatus(`Receiving files from ${name}...`);
       await Transnet.acceptFileTransfer(senderAddr);
-      await Transnet.startServer('8080');
-      setStatus('Transfer complete!');
-      setStep('done');
+      setIsReceiving(true);
+      Transnet.startServer('8080');
     } catch (e: any) {
+      setIsReceiving(false);
       setStatus('Nothing received. Tap to try again.');
       setStep('ready');
       Alert.alert('Timed out', 'Make sure the sender is searching on the same network.');
@@ -69,6 +104,8 @@ export default function ReceiveScreen() {
     setStep('ready');
     setStatus('Tap below to start');
     setSenderName('');
+    setProgress(null);
+    setIsReceiving(false);
   };
 
   const stopServices = async () => {
@@ -107,6 +144,17 @@ export default function ReceiveScreen() {
       <View style={styles.radarCenter}>
         <Radar active />
       </View>
+
+      {isReceiving && progress && (
+        <View style={styles.progressCard}>
+          <View style={styles.progressBarBg}>
+            <View style={[styles.progressBarFill, { width: `${progress.percentDone}%` }]} />
+          </View>
+          <Text style={styles.progressText}>
+            File {progress.currentFileIdx + 1}/{progress.totalFiles} — {progress.percentDone.toFixed(0)}%
+          </Text>
+        </View>
+      )}
 
       <View style={styles.statusCard}>
         <ActivityIndicator color={Colors.accent} />
@@ -260,6 +308,28 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   linkButtonText: {
+    color: Colors.textMuted,
+    fontSize: 13,
+  },
+
+  progressCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    padding: 16,
+    gap: 8,
+  },
+  progressBarBg: {
+    height: 8,
+    backgroundColor: Colors.surfaceLight,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: 8,
+    backgroundColor: Colors.accent,
+    borderRadius: 4,
+  },
+  progressText: {
     color: Colors.textMuted,
     fontSize: 13,
   },

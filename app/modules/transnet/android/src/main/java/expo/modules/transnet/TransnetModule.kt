@@ -219,5 +219,37 @@ class TransnetModule : Module() {
           throw e
       }
     }
+
+    AsyncFunction("getClientProgress") { ->
+      try {
+        return@AsyncFunction Core.getClientProgressStr()
+      } catch (e: Exception) {
+        throw Exception("Failed to get client progress: ${e.message ?: "Unknown error"}")
+      }
+    }
+
+    AsyncFunction("getServerProgress") { ->
+      try {
+        return@AsyncFunction Core.getServerProgressStr()
+      } catch (e: Exception) {
+        throw Exception("Failed to get server progress: ${e.message ?: "Unknown error"}")
+      }
+    }
+
+    AsyncFunction("getClientStatus") { ->
+      try {
+        return@AsyncFunction Core.getClientStatus()
+      } catch (e: Exception) {
+        throw Exception("Failed to get client status: ${e.message ?: "Unknown error"}")
+      }
+    }
+
+    AsyncFunction("getServerStatus") { ->
+      try {
+        return@AsyncFunction Core.getServerStatus()
+      } catch (e: Exception) {
+        throw Exception("Failed to get server status: ${e.message ?: "Unknown error"}")
+      }
+    }
   }
 }

@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, Alert, ActivityIndicator, FlatList, Platform } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import Transnet from '../../modules/transnet/src/TransnetModule';
+import Transnet, { parseProgressStr, TransferProgress } from '../../modules/transnet/src/TransnetModule';
 import { Colors } from '../constants/theme';
 import { StepIndicator } from '../components/StepIndicator';
 
@@ -31,6 +31,37 @@ export default function SendScreen() {
   const [showManual, setShowManual] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [progress, setProgress] = useState<TransferProgress | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (!isSending) return;
+
+    pollingRef.current = setInterval(async () => {
+      try {
+        const [rawProgress, rawStatus] = await Promise.all([
+          Transnet.getClientProgress(),
+          Transnet.getClientStatus(),
+        ]);
+        setProgress(parseProgressStr(rawProgress));
+
+        if (rawStatus === 'done') {
+          setIsSending(false);
+          setProgress(prev => prev ? { ...prev, percentDone: 100 } : null);
+          Alert.alert('Done', 'File(s) sent successfully!');
+          resetAll();
+        } else if (rawStatus.startsWith('error:')) {
+          setIsSending(false);
+          setProgress(null);
+          Alert.alert('Error', rawStatus.slice(7));
+        }
+      } catch {}
+    }, 200);
+
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, [isSending]);
 
   const stepIndex = step === 'pick' ? 0 : step === 'find' ? 1 : 2;
 
@@ -66,15 +97,13 @@ export default function SendScreen() {
   const handleSend = async () => {
     if (!targetIP || selectedFiles.length === 0) return;
     setIsSending(true);
+    setProgress(null);
     try {
       const uris = selectedFiles.map(f => f.uri).join('<|sep|>');
-      const response = await Transnet.sendFile(targetIP, '8080', uris);
-      Alert.alert('Done', response);
-      resetAll();
+      Transnet.sendFile(targetIP, '8080', uris);
     } catch (e: any) {
-      Alert.alert('Error', e.message);
-    } finally {
       setIsSending(false);
+      Alert.alert('Error', e.message);
     }
   };
 
@@ -84,6 +113,7 @@ export default function SendScreen() {
     setTargetName('');
     setManualIP('');
     setStep('pick');
+    setProgress(null);
   };
 
   const goBack = () => {
@@ -230,6 +260,17 @@ export default function SendScreen() {
           <Text style={styles.summaryValue}>{selectedFiles.length} file(s)</Text>
         </View>
       </View>
+
+      {isSending && progress && (
+        <View style={styles.progressCard}>
+          <View style={styles.progressBarBg}>
+            <View style={[styles.progressBarFill, { width: `${progress.percentDone}%` }]} />
+          </View>
+          <Text style={styles.progressText}>
+            File {progress.currentFileIdx + 1}/{progress.totalFiles} — {progress.percentDone.toFixed(0)}%
+          </Text>
+        </View>
+      )}
 
       <TouchableOpacity
         style={[styles.primaryButton, isSending && styles.disabled]}
@@ -450,5 +491,27 @@ const styles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.4,
+  },
+
+  progressCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    padding: 16,
+    gap: 8,
+  },
+  progressBarBg: {
+    height: 8,
+    backgroundColor: Colors.surfaceLight,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: 8,
+    backgroundColor: Colors.accent,
+    borderRadius: 4,
+  },
+  progressText: {
+    color: Colors.textMuted,
+    fontSize: 13,
   },
 });

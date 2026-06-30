@@ -12,6 +12,11 @@ import (
 func SendFile(ip string, port string, filePathsStr string) error {
 	filePaths := strings.Split(filePathsStr, "<|sep|>")
 
+	updateClientProgress(func(p *Progress) {
+		p.TotalFiles = len(filePaths)
+	})
+	setClientStatus("connecting")
+
 	var conn net.Conn
 	var err error
 	for i := 0; i < 10; i++ {
@@ -22,20 +27,33 @@ func SendFile(ip string, port string, filePathsStr string) error {
 		time.Sleep(200 * time.Millisecond)
 	}
 	if err != nil {
+		setClientStatus("error: " + err.Error())
 		return fmt.Errorf("error dialing client connection: %v", err)
 	}
 
-	defer conn.Close()
 	conn.SetDeadline(time.Now().Add(5 * time.Minute))
 
 	fmt.Fprintf(conn, "%d\n", len(filePaths))
 
-	for _, filePath := range filePaths {
-		err := sendSingleFile(conn, filePath)
-		if err != nil {
-			return err
+	go func() {
+		defer conn.Close()
+
+		setClientStatus("transferring")
+
+		for i, filePath := range filePaths {
+			updateClientProgress(func(p *Progress) {
+				p.CurrentFileIdx = i
+			})
+
+			err := sendSingleFile(conn, filePath)
+			if err != nil {
+				setClientStatus("error: " + err.Error())
+				return
+			}
 		}
-	}
+
+		setClientStatus("done")
+	}()
 
 	return nil
 }
@@ -43,25 +61,91 @@ func SendFile(ip string, port string, filePathsStr string) error {
 func sendSingleFile(conn net.Conn, filePath string) error {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return fmt.Errorf("error opening file: %v", err)
+		return fmt.Errorf("error opening file: %w", err)
 	}
 	defer file.Close()
 
 	fileInfo, err := file.Stat()
 	if err != nil {
-		return fmt.Errorf("error reading file stats: %v", err)
+		return fmt.Errorf("error reading file stats: %w", err)
 	}
 
-	header := fmt.Sprintf("%s<|sep|>%d\n", fileInfo.Name(), fileInfo.Size())
-	_, err = conn.Write([]byte(header))
-	if err != nil {
-		return fmt.Errorf("error writing header: %v", err)
+	fileSize := fileInfo.Size()
+
+	// Send file header first.
+	header := fmt.Sprintf("%s<|sep|>%d\n", fileInfo.Name(), fileSize)
+	if _, err := conn.Write([]byte(header)); err != nil {
+		return fmt.Errorf("error writing header: %w", err)
 	}
 
-	_, err = io.Copy(conn, file)
-	if err != nil {
-		return fmt.Errorf("error streaming file: %v", err)
+	// 32 KiB buffer.
+	buf := make([]byte, 32*1024)
+
+	var sent int64
+	lastProgressUpdate := time.Now()
+
+	for {
+		n, readErr := file.Read(buf)
+		if n > 0 {
+			// Write all bytes, even if conn.Write does a partial write.
+			writtenTotal := 0
+			for writtenTotal < n {
+				written, writeErr := conn.Write(buf[writtenTotal:n])
+				if writeErr != nil {
+					return fmt.Errorf("error streaming file: %w", writeErr)
+				}
+				if written == 0 {
+					return fmt.Errorf("error streaming file: wrote 0 bytes without error")
+				}
+				writtenTotal += written
+			}
+
+			sent += int64(n)
+
+			// Throttle progress updates a bit so you do not spam locks/UI.
+			if time.Since(lastProgressUpdate) >= 50*time.Millisecond || sent == fileSize {
+				updateClientProgress(func(p *Progress) {
+					p.CurrentBytes = int64(sent)
+					p.TotalBytes = int64(fileSize)
+					if fileSize > 0 {
+						p.PercentDone = float64(sent) * 100 / float64(fileSize)
+					} else {
+						p.PercentDone = 100
+					}
+				})
+
+				lastProgressUpdate = time.Now()
+			}
+		}
+
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			return fmt.Errorf("error reading file: %w", readErr)
+		}
 	}
+
+	// Final update to ensure 100%.
+	updateClientProgress(func(p *Progress) {
+		p.CurrentBytes = int64(fileSize)
+		p.TotalBytes = int64(fileSize)
+		p.PercentDone = 100
+	})
 
 	return nil
+}
+
+func GetClientProgress() Progress {
+	clientProgressMutex.RLock()
+	defer clientProgressMutex.RUnlock()
+
+	return clientCurrentProgress
+}
+
+func GetClientStatus() string {
+	clientStatusMutex.RLock()
+	defer clientStatusMutex.RUnlock()
+
+	return clientStatus
 }
