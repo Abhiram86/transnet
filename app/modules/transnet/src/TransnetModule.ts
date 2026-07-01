@@ -38,6 +38,9 @@ class TransnetModuleStub {
   getServerProgress = async (): Promise<string> => '0<|sep|>0<|sep|><|sep|>0<|sep|>0<|sep|>0';
   getClientStatus = async (): Promise<string> => '';
   getServerStatus = async (): Promise<string> => '';
+  cancelClientTransfer = async (): Promise<string> => 'stub';
+  cancelServerTransfer = async (): Promise<string> => 'stub';
+  signalSkipCurrentFile = async (): Promise<string> => 'stub';
 }
 
 const Transnet = Platform.OS === 'web'

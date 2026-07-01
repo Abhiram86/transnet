@@ -51,6 +51,11 @@ export default function SendScreen() {
           setProgress(prev => prev ? { ...prev, percentDone: 100 } : null);
           Alert.alert('Done', 'File(s) sent successfully!');
           resetAll();
+        } else if (rawStatus === 'cancelled') {
+          setIsSending(false);
+          setProgress(null);
+          Alert.alert('Cancelled', 'Transfer was cancelled.');
+          resetAll();
         } else if (rawStatus.startsWith('error:')) {
           setIsSending(false);
           setProgress(null);
@@ -106,6 +111,16 @@ export default function SendScreen() {
       setIsSending(false);
       Alert.alert('Error', e.message);
     }
+  };
+
+  const handleCancelSend = async () => {
+    try {
+      await Transnet.cancelClientTransfer();
+    } catch {}
+    setIsSending(false);
+    setProgress(null);
+    setStep('pick');
+    resetAll();
   };
 
   const resetAll = () => {
@@ -266,6 +281,16 @@ export default function SendScreen() {
         <TransferProgressBar progress={progress} />
       )}
 
+      {isSending ? (
+        <TouchableOpacity
+          style={styles.stopButton}
+          onPress={handleCancelSend}
+          activeOpacity={0.7}
+        >
+          <MaterialCommunityIcons name="stop-circle-outline" size={20} color={Colors.textMuted} />
+          <Text style={styles.stopButtonText}>Stop transfer</Text>
+        </TouchableOpacity>
+      ) : (
       <TouchableOpacity
         style={[styles.primaryButton, isSending && styles.disabled]}
         onPress={handleSend}
@@ -281,6 +306,7 @@ export default function SendScreen() {
           </>
         )}
       </TouchableOpacity>
+      )}
     </View>
   );
 
@@ -485,5 +511,19 @@ const styles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.4,
+  },
+  stopButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderRadius: 14,
+    backgroundColor: Colors.surface,
+    gap: 8,
+  },
+  stopButtonText: {
+    color: Colors.textMuted,
+    fontWeight: '600',
+    fontSize: 16,
   },
 });

@@ -2,6 +2,7 @@ package core
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -9,12 +10,15 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
 var activeListener net.Listener
 
-func handleConnection(conn net.Conn, saveDir string) error {
+var skipCurrentFile atomic.Bool
+
+func handleConnection(ctx context.Context, cancel context.CancelFunc, conn net.Conn, saveDir string) error {
 	conn.SetDeadline(time.Now().Add(5 * time.Minute))
 
 	reader := bufio.NewReader(conn)
@@ -34,13 +38,25 @@ func handleConnection(conn net.Conn, saveDir string) error {
 	})
 	go func() {
 		defer conn.Close()
+		defer cancel()
 
 		setServerStatus("transferring")
 
 		for i := range numFiles {
-			fileName, err := receiveSingleFile(reader, saveDir)
+			select {
+			case <-ctx.Done():
+				setServerStatus("cancelled")
+				return
+			default:
+			}
+
+			fileName, err := receiveSingleFile(ctx, reader, saveDir)
 			if err != nil {
-				setServerStatus("error: " + err.Error())
+				if ctx.Err() != nil {
+					setServerStatus("cancelled")
+				} else {
+					setServerStatus("error: " + err.Error())
+				}
 				return
 			}
 			updateServerProgress(func(p *Progress) {
@@ -56,7 +72,11 @@ func handleConnection(conn net.Conn, saveDir string) error {
 	return nil
 }
 
-func receiveSingleFile(reader *bufio.Reader, saveDir string) (string, error) {
+func SignalSkipCurrentFile() {
+	skipCurrentFile.Store(true)
+}
+
+func receiveSingleFile(ctx context.Context, reader *bufio.Reader, saveDir string) (string, error) {
 	header, err := reader.ReadString('\n')
 	if err != nil {
 	return "", fmt.Errorf("reading header: %v", err)
@@ -72,18 +92,59 @@ func receiveSingleFile(reader *bufio.Reader, saveDir string) (string, error) {
 		return "", fmt.Errorf("invalid file size: %v", err)
 	}
 
-	outFile, err := os.Create(saveDir + "/" + fileName)
+	partPath := saveDir + "/" + fileName + ".part"
+	outFile, err := os.Create(partPath)
 	if err != nil {
 		return "", fmt.Errorf("creating file: %v", err)
 	}
-	defer outFile.Close()
 
 	buf := make([]byte, 32*1024)
 
 	var received int64
 	lastProgressUpdate := time.Now()
+	skipped := false
 
 	for received < fileSize {
+		select {
+		case <-ctx.Done():
+			outFile.Close()
+			os.Remove(partPath)
+			return "", ctx.Err()
+		default:
+		}
+
+		if skipCurrentFile.Load() {
+			skipCurrentFile.Store(false)
+			skipped = true
+			outFile.Close()
+			os.Remove(partPath)
+
+			for received < fileSize {
+				drainSize := int64(len(buf))
+				remaining := fileSize - received
+				if remaining < drainSize {
+					drainSize = remaining
+				}
+				n, drainErr := io.ReadFull(reader, buf[:drainSize])
+				received += int64(n)
+				if drainErr != nil {
+					if drainErr == io.EOF {
+						break
+					}
+					return "", fmt.Errorf("draining skipped file: %w", drainErr)
+				}
+			}
+
+			updateServerProgress(func(p *Progress) {
+				p.CurrentBytes = fileSize
+				p.TotalBytes = fileSize
+				p.PercentDone = 100
+			})
+
+			fmt.Printf("Skipped file: %s\n", fileName)
+			return fileName, nil
+		}
+
 		remaining := fileSize - received
 		readSize := len(buf)
 		if remaining < int64(readSize) {
@@ -97,9 +158,13 @@ func receiveSingleFile(reader *bufio.Reader, saveDir string) (string, error) {
 			for writtenTotal < n {
 				written, writeErr := outFile.Write(buf[writtenTotal:n])
 				if writeErr != nil {
+				outFile.Close()
+				os.Remove(partPath)
 				return "", fmt.Errorf("writing file: %w", writeErr)
 				}
 				if written == 0 {
+				outFile.Close()
+				os.Remove(partPath)
 				return "", fmt.Errorf("writing file: wrote 0 bytes without error")
 				}
 				writtenTotal += written
@@ -127,15 +192,27 @@ func receiveSingleFile(reader *bufio.Reader, saveDir string) (string, error) {
 			break
 		}
 		if err != nil {
+			outFile.Close()
+			os.Remove(partPath)
 			return "", fmt.Errorf("reading data: %w", err)
 		}
 	}
 
-	updateServerProgress(func(p *Progress) {
-		p.CurrentBytes = fileSize
-		p.TotalBytes = fileSize
-		p.PercentDone = 100
-	})
+	outFile.Close()
+
+	finalPath := saveDir + "/" + fileName
+	if renameErr := os.Rename(partPath, finalPath); renameErr != nil {
+		os.Remove(partPath)
+		return "", fmt.Errorf("renaming part file: %w", renameErr)
+	}
+
+	if !skipped {
+		updateServerProgress(func(p *Progress) {
+			p.CurrentBytes = fileSize
+			p.TotalBytes = fileSize
+			p.PercentDone = 100
+		})
+	}
 
 	return fileName, nil
 }
@@ -144,6 +221,13 @@ func StartServer(port, saveDir string) (string, error) {
 	if activeListener != nil {
 		return "Server already running", nil
 	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	serverCtxMu.Lock()
+	serverCtx = ctx
+	serverCancel = cancel
+	serverCtxMu.Unlock()
 
 	listener, err := net.Listen("tcp", ":"+port)
 	if err != nil {
@@ -161,7 +245,7 @@ func StartServer(port, saveDir string) (string, error) {
 		return "", fmt.Errorf("Error accepting connection: %v", err)
 	}
 
-	handleConnection(conn, saveDir)
+	handleConnection(ctx, cancel, conn, saveDir)
 
 	return "Transfer complete", nil
 }

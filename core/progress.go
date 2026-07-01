@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"sync"
 )
@@ -28,6 +29,18 @@ var (
 	serverStatusMutex     sync.RWMutex
 )
 
+var (
+	clientCtx    context.Context
+	clientCancel context.CancelFunc
+	clientCtxMu  sync.Mutex
+)
+
+var (
+	serverCtx    context.Context
+	serverCancel context.CancelFunc
+	serverCtxMu  sync.Mutex
+)
+
 func updateClientProgress(fn func(p *Progress)) {
 	clientProgressMutex.Lock()
 	fn(&clientCurrentProgress)
@@ -50,6 +63,26 @@ func setServerStatus(s string) {
 	serverStatusMutex.Lock()
 	serverStatus = s
 	serverStatusMutex.Unlock()
+}
+
+func CancelClientTransfer() {
+	clientCtxMu.Lock()
+	defer clientCtxMu.Unlock()
+	if clientCancel != nil {
+		clientCancel()
+		clientCancel = nil
+		clientCtx = nil
+	}
+}
+
+func CancelServerTransfer() {
+	serverCtxMu.Lock()
+	defer serverCtxMu.Unlock()
+	if serverCancel != nil {
+		serverCancel()
+		serverCancel = nil
+		serverCtx = nil
+	}
 }
 
 func GetClientProgressStr() string {

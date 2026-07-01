@@ -251,5 +251,32 @@ class TransnetModule : Module() {
         throw Exception("Failed to get server status: ${e.message ?: "Unknown error"}")
       }
     }
+
+    AsyncFunction("cancelClientTransfer") { ->
+      try {
+        Core.cancelClientTransfer()
+        return@AsyncFunction "Client transfer cancelled"
+      } catch (e: Exception) {
+        throw Exception("Failed to cancel client transfer: ${e.message ?: "Unknown error"}")
+      }
+    }
+
+    AsyncFunction("cancelServerTransfer") { ->
+      try {
+        Core.cancelServerTransfer()
+        return@AsyncFunction "Server transfer cancelled"
+      } catch (e: Exception) {
+        throw Exception("Failed to cancel server transfer: ${e.message ?: "Unknown error"}")
+      }
+    }
+
+    AsyncFunction("signalSkipCurrentFile") { ->
+      try {
+        Core.signalSkipCurrentFile()
+        return@AsyncFunction "Skip signalled"
+      } catch (e: Exception) {
+        throw Exception("Failed to signal skip: ${e.message ?: "Unknown error"}")
+      }
+    }
   }
 }

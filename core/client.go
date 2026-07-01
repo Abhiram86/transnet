@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -12,6 +13,13 @@ import (
 
 func SendFile(ip string, port string, filePathsStr string) error {
 	filePaths := strings.Split(filePathsStr, "<|sep|>")
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	clientCtxMu.Lock()
+	clientCtx = ctx
+	clientCancel = cancel
+	clientCtxMu.Unlock()
 
 	updateClientProgress(func(p *Progress) {
 		p.TotalFiles = len(filePaths)
@@ -38,19 +46,31 @@ func SendFile(ip string, port string, filePathsStr string) error {
 
 	go func() {
 		defer conn.Close()
+		defer cancel()
 
 		setClientStatus("transferring")
 
 		for i, filePath := range filePaths {
+			select {
+			case <-ctx.Done():
+				setClientStatus("cancelled")
+				return
+			default:
+			}
+
 			fileName := filepath.Base(filePath)
 			updateClientProgress(func(p *Progress) {
 				p.CurrentFileIdx = i
 				p.CurrentFileName = fileName
 			})
 
-			err := sendSingleFile(conn, filePath)
+			err := sendSingleFile(ctx, conn, filePath)
 			if err != nil {
-				setClientStatus("error: " + err.Error())
+				if ctx.Err() != nil {
+					setClientStatus("cancelled")
+				} else {
+					setClientStatus("error: " + err.Error())
+				}
 				return
 			}
 		}
@@ -61,7 +81,7 @@ func SendFile(ip string, port string, filePathsStr string) error {
 	return nil
 }
 
-func sendSingleFile(conn net.Conn, filePath string) error {
+func sendSingleFile(ctx context.Context, conn net.Conn, filePath string) error {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return fmt.Errorf("error opening file: %w", err)
@@ -88,11 +108,23 @@ func sendSingleFile(conn net.Conn, filePath string) error {
 	lastProgressUpdate := time.Now()
 
 	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
 		n, readErr := file.Read(buf)
 		if n > 0 {
 			// Write all bytes, even if conn.Write does a partial write.
 			writtenTotal := 0
 			for writtenTotal < n {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+				}
+
 				written, writeErr := conn.Write(buf[writtenTotal:n])
 				if writeErr != nil {
 					return fmt.Errorf("error streaming file: %w", writeErr)

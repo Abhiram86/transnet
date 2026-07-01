@@ -66,6 +66,12 @@ export default function ReceiveScreen() {
           setProgress(prev => prev ? { ...prev, percentDone: 100 } : null);
           setStatus('Transfer complete!');
           setStep('done');
+        } else if (rawStatus === 'cancelled') {
+          setIsReceiving(false);
+          setProgress(null);
+          setStatus('Transfer cancelled. Tap to try again.');
+          setStep('ready');
+          Alert.alert('Cancelled', 'Transfer was cancelled.');
         } else if (rawStatus.startsWith('error:')) {
           setIsReceiving(false);
           setProgress(null);
@@ -119,6 +125,22 @@ export default function ReceiveScreen() {
     }
   };
 
+  const handleCancelReceive = async () => {
+    try {
+      await Transnet.cancelServerTransfer();
+    } catch {}
+    setIsReceiving(false);
+    setProgress(null);
+    setStatus('Transfer cancelled. Tap to try again.');
+    setStep('ready');
+  };
+
+  const handleSkipFile = async () => {
+    try {
+      await Transnet.signalSkipCurrentFile();
+    } catch {}
+  };
+
   // ── Step: Ready ───────────────────────────────────────
 
   const renderReady = () => (
@@ -148,6 +170,19 @@ export default function ReceiveScreen() {
 
       {isReceiving && progress && (
         <TransferProgressBar progress={progress} />
+      )}
+
+      {isReceiving && (
+        <View style={styles.transferActions}>
+          <TouchableOpacity style={styles.skipButton} onPress={handleSkipFile} activeOpacity={0.7}>
+            <MaterialCommunityIcons name="skip-next" size={20} color={Colors.textMuted} />
+            <Text style={styles.skipButtonText}>Skip file</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.stopButton} onPress={handleCancelReceive} activeOpacity={0.7}>
+            <MaterialCommunityIcons name="stop-circle-outline" size={20} color={Colors.textMuted} />
+            <Text style={styles.stopButtonText}>Stop</Text>
+          </TouchableOpacity>
+        </View>
       )}
 
       <View style={styles.statusCard}>
@@ -304,5 +339,39 @@ const styles = StyleSheet.create({
   linkButtonText: {
     color: Colors.textMuted,
     fontSize: 13,
+  },
+  transferActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  skipButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: Colors.surfaceLight,
+    gap: 8,
+  },
+  skipButtonText: {
+    color: Colors.textMuted,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  stopButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: Colors.surface,
+    gap: 8,
+  },
+  stopButtonText: {
+    color: Colors.textMuted,
+    fontWeight: '600',
+    fontSize: 14,
   },
 });
