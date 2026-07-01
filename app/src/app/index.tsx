@@ -5,6 +5,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Transnet, { parseProgressStr, TransferProgress } from '../../modules/transnet/src/TransnetModule';
 import { Colors } from '../constants/theme';
 import { StepIndicator } from '../components/StepIndicator';
+import { TransferProgressBar } from '../components/TransferProgressBar';
 
 type Step = 'pick' | 'find' | 'send';
 
@@ -262,16 +263,7 @@ export default function SendScreen() {
       </View>
 
       {isSending && progress && (
-        <View style={styles.progressCard}>
-          <View style={styles.progressBarBg}>
-            <View style={[styles.progressBarFill, { width: `${progress.percentDone}%` }]} />
-          </View>
-          <View style={styles.progressRow}>
-            <Text style={styles.progressIdx}>({progress.currentFileIdx + 1}/{progress.totalFiles})</Text>
-            <Text style={styles.progressName} numberOfLines={1}>{progress.currentFileName}</Text>
-            <Text style={styles.progressPct}>{progress.percentDone.toFixed(0)}%</Text>
-          </View>
-        </View>
+        <TransferProgressBar progress={progress} />
       )}
 
       <TouchableOpacity
@@ -493,42 +485,5 @@ const styles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.4,
-  },
-
-  progressCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
-    padding: 16,
-    gap: 8,
-  },
-  progressBarBg: {
-    height: 8,
-    backgroundColor: Colors.surfaceLight,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: 8,
-    backgroundColor: Colors.accent,
-    borderRadius: 4,
-  },
-  progressRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  progressIdx: {
-    color: Colors.textMuted,
-    fontSize: 13,
-  },
-  progressName: {
-    color: Colors.textMuted,
-    fontSize: 13,
-    flex: 1,
-  },
-  progressPct: {
-    color: Colors.textMuted,
-    fontSize: 13,
-    fontWeight: '600',
   },
 });
