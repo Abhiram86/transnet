@@ -13,7 +13,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#000000",
         "foregroundImage": "./assets/images/transnet_square.png",
         "backgroundImage": "./assets/images/transnet_square.png",
         "monochromeImage": "./assets/images/transnet_square.png"
