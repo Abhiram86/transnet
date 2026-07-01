@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gradle Build Error Deep Dive — TransNet</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.7;
+            background: linear-gradient(135deg, #0B0F19 0%, #1a1f2e 100%);
+            color: #e0e6ed;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 20px;
+            padding: 50px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #00E5FF, #00B4D8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: #6c757d;
+            font-size: 1.1rem;
+            margin-bottom: 40px;
+        }
+
+        h2 {
+            font-size: 1.8rem;
+            margin-top: 50px;
+            margin-bottom: 25px;
+            color: #00E5FF;
+            border-left: 4px solid #00E5FF;
+            padding-left: 15px;
+        }
+
+        h3 {
+            font-size: 1.3rem;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            color: #00B4D8;
+        }
+
+        h4 {
+            font-size: 1.1rem;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            color: #64b5f6;
+        }
+
+        p {
+            margin-bottom: 20px;
+        }
+
+        ul, ol {
+            margin-bottom: 20px;
+            padding-left: 25px;
+        }
+
+        li {
+            margin-bottom: 10px;
+        }
+
+        code {
+            background: rgba(0, 0, 0, 0.4);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 0.9em;
+            color: #ff7eb3;
+        }
+
+        pre {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 20px;
+            border-radius: 10px;
+            overflow-x: auto;
+            margin-bottom: 25px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+            color: #e0e6ed;
+            font-size: 0.85em;
+        }
+
+        blockquote {
+            border-left: 4px solid #ff7eb3;
+            padding-left: 20px;
+            margin: 25px 0;
+            background: rgba(255, 126, 179, 0.1);
+            padding: 15px 20px;
+            border-radius: 0 10px 10px 0;
+            font-style: italic;
+        }
+
+        .concept-box {
+            background: linear-gradient(135deg, rgba(0, 229, 255, 0.1), rgba(0, 180, 216, 0.1));
+            border: 1px solid rgba(0, 229, 255, 0.3);
+            border-radius: 15px;
+            padding: 25px;
+            margin: 25px 0;
+        }
+
+        .concept-box h3 {
+            margin-top: 0;
+            color: #00E5FF;
+        }
+
+        .error {
+            color: #ff6b6b;
+            background: rgba(255, 107, 107, 0.1);
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+
+        .success {
+            color: #00E5FF;
+            background: rgba(0, 229, 255, 0.1);
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+
+        .timeline {
+            border-left: 3px solid rgba(255, 255, 255, 0.2);
+            margin: 30px 0 30px 20px;
+            padding-left: 30px;
+        }
+
+        .timeline-item {
+            position: relative;
+            margin-bottom: 25px;
+        }
+
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -36px;
+            top: 5px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #00E5FF;
+        }
+
+        .timeline-item.error::before {
+            background: #ff6b6b;
+        }
+
+        .timeline-item.success::before {
+            background: #00E5FF;
+        }
+
+        .timeline-item.neutral::before {
+            background: #6c757d;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 25px 0;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        th, td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        th {
+            background: rgba(0, 229, 255, 0.15);
+            color: #00E5FF;
+            font-weight: 600;
+        }
+
+        tr:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .footer {
+            margin-top: 60px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: center;
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Gradle Build Error Deep Dive</h1>
+        <p class="subtitle">Why "just run android" took 2 hours to fix • A case study in corrupted build caches</p>
+
+        <h2>Contents</h2>
+        <ol>
+            <li><a href="#what-happened">What Happened: The Error Journey</a></li>
+            <li><a href="#core-concepts">Core Concepts: Gradle, Maven, Transforms, and More</a></li>
+            <li><a href="#root-cause">Root Cause Analysis: Docker Corruption</a></li>
+            <li><a href="#progression">Error Progression: Why We Saw Different Errors Over Time</a></li>
+            <li><a href="#what-we-tried">What We Tried (And Why It Failed)</a></li>
+            <li><a href="#the-fix">The Fix: Two-Part Solution</a></li>
+            <li><a href="#lessons">Lessons Learned</a></li>
+        </ol>
+
+        <h2 id="what-happened">1. What Happened: The Error Journey</h2>
+
+        <p>After updating the app icon and splash screen in <code>app.json</code>, the build initially worked with <code>expo prebuild --clean</code>. But subsequent runs of <code>pnpm run android</code> failed with confusing errors that kept changing:</p>
+
+        <div class="timeline">
+            <div class="timeline-item error">
+                <strong>Error 1:</strong> <span class="error">Invalid &lt;color&gt; for given resource value</span> in appcompat-1.7.1
+            </div>
+            <div class="timeline-item error">
+                <strong>Error 2:</strong> <span class="error">Invalid &lt;color&gt; for given resource value</span> in material-1.13.0
+            </div>
+            <div class="timeline-item error">
+                <strong>Error 3:</strong> <span class="error">Directory does not exist: .../expo.modules.ui-56.0.13-runtime_dex</span>
+            </div>
+            <div class="timeline-item success">
+                <strong>Success:</strong> Build finally succeeded after clearing build cache
+            </div>
+        </div>
+
+        <p>Each cleanup attempt seemed to "fix" one error, only to reveal another lurking in the corrupted cache.</p>
+
+        <h2 id="core-concepts">2. Core Concepts: Gradle, Maven, Transforms, and More</h2>
+
+        <div class="concept-box">
+            <h3>Gradle</h3>
+            <p>The build tool used by Android projects. It's like a project manager that:</p>
+            <ul>
+                <li><strong>Downloads dependencies</strong> from repositories (via Maven or other formats)</li>
+                <li><strong>Compiles code</strong> (Kotlin, Java, C++)</li>
+                <li><strong>Processes resources</strong> (images, XML layouts, strings, colors)</li>
+                <li><strong>Generates APKs/AABs</strong> (the final app package)</li>
+            </ul>
+        </div>
+
+        <div class="concept-box">
+            <h3>Maven</h3>
+            <p>A dependency management format and protocol. Most Android libraries are published as Maven artifacts:</p>
+            <ul>
+                <li><strong>POM files</strong> (Project Object Model) — metadata describing dependencies</li>
+                <li><strong>JAR files</strong> — compiled Java/Kotlin code</li>
+                <li><strong>AAR files</strong> (Android Archive) — JAR + Android resources + native libraries</li>
+            </ul>
+        </div>
+
+        <div class="concept-box">
+            <h3>Gradle Transforms</h3>
+            <p>When Gradle downloads a Maven artifact (like an AAR), it may need to <strong>transform</strong> it before use:</p>
+            <ul>
+                <li><strong>Resource merging</strong> — merging an AAR's resources with the app's resources</li>
+                <li><strong>Desugaring</strong> — converting newer Java features to older Java versions</li>
+                <li><strong>Dexing</strong> — converting compiled bytecode to Android DEX format</li>
+            </ul>
+            <p>These transforms are cached at <code>~/.gradle/caches/[version]/transforms/[hash]/transformed/</code></p>
+        </div>
+
+        <div class="concept-box">
+            <h3>AAPT2 (Android Asset Packaging Tool 2)</h3>
+            <p>The tool that processes Android resources (XML layouts, drawables, colors, strings). It:</p>
+            <ul>
+                <li><strong>Parses</strong> resource XML files</li>
+                <li><strong>Compiles</strong> them into binary format</li>
+                <li><strong>Merges</strong> resources from all libraries and the app</li>
+                <li><strong>Validates</strong> resource values (must be correct colors, dimensions, etc.)</li>
+            </ul>
+            <p><strong>Key behavior:</strong> AAPT2 is <strong>strict</strong> about color values — they must be hex (<code>#RRGGBB</code> or <code>#AARRGGBB</code>), not named colors like <code>"black"</code>.</p>
+        </div>
+
+        <div class="concept-box">
+            <h3>D8/Dexing</h3>
+            <p>The tool that converts compiled Java/Kotlin bytecode (.class files) into Android DEX format (.dex files), which is what the Android runtime executes. Dexing is performed on:</p>
+            <ul>
+                <li><strong>App code</strong> — compiled from your source</li>
+                <li><strong>Library code</strong> — extracted from AAR JARs</li>
+            </ul>
+        </div>
+
+        <div class="concept-box">
+            <h3>Gradle Build Cache</h3>
+            <p>A separate cache from the transforms cache that stores <strong>build outputs</strong> (not source artifacts). When you run a build with <code>--build-cache</code>, Gradle can reuse:</p>
+            <ul>
+                <li><strong>Compiled code</strong> (if sources unchanged)</li>
+                <li><strong>Merged resources</strong> (if resources unchanged)</li>
+                <li><strong>Dexed bytecode</strong> (if bytecode unchanged)</li>
+            </ul>
+            <p>This cache is at <code>~/.gradle/caches/build-cache-*</code></p>
+        </div>
+
+        <h2 id="root-cause">3. Root Cause Analysis: Docker Corruption</h2>
+
+        <p>The root cause of all these errors was <strong>Docker experiments</strong> you ran earlier:</p>
+
+        <blockquote>
+            You created Docker containers to build the Android app. Inside the container, Gradle ran as <code>root</code> (Linux default for Docker). When Gradle cached artifacts in <code>/home/abhi/.gradle/caches/</code>, those files became owned by root, not by your user.
+        </blockquote>
+
+        <h3>Why This Caused Corruption</h3>
+
+        <ol>
+            <li><strong>Permission conflicts:</strong> When you later ran Gradle as your user (<code>abhi</code>), it couldn't write to root-owned directories</li>
+            <li><strong>Partial writes:</strong> Some transforms may have started but couldn't complete due to permission errors</li>
+            <li><strong>Stale metadata:</strong> Gradle's metadata (<code>results.bin</code>) recorded successful transforms, but the actual output files were missing or corrupted</li>
+            <li><strong>Hash collisions:</strong> Gradle uses content hashes to identify transforms. Corrupted hashes made Gradle think artifacts were valid when they weren't</li>
+        </ol>
+
+        <h3>The Cascade of Failures</h3>
+
+        <pre><code>Docker root-owned files
+  ↓
+Gradle can't write as abhi
+  ↓
+Transforms partially complete
+  ↓
+Metadata says "done", files are missing
+  ↓
+AAPT2 tries to use corrupted resources → Error #1
+  ↓
+Clean transform, Gradle re-downloads
+  ↓
+Re-download also corrupted → Error #2
+  ↓
+Dex merger tries to use corrupted dexes → Error #3
+  ↓
+Finally clear build cache → Success!</code></pre>
+
+        <h2 id="progression">4. Error Progression: Why We Saw Different Errors Over Time</h2>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Error</th>
+                    <th>What It Meant</th>
+                    <th>Why It Changed</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><span class="error">Invalid &lt;color&gt; in appcompat-1.7.1</span></td>
+                    <td>AAPT2 couldn't parse a color in the appcompat library's merged resources</td>
+                    <td>Corrupted transform of appcompat AAR; partial merge left invalid XML</td>
+                </tr>
+                <tr>
+                    <td><span class="error">Invalid &lt;color&gt; in material-1.13.0</span></td>
+                    <td>Same issue, but in material library after appcompat was cleaned</td>
+                    <td>After cleaning appcompat, Gradle re-processed material — also corrupted</td>
+                </tr>
+                <tr>
+                    <td><span class="error">Directory does not exist: ...runtime_dex</span></td>
+                    <td>Dex merger couldn't find dex files for a library</td>
+                    <td>Transform completed but dex extraction failed silently; metadata recorded success</td>
+                </tr>
+                <tr>
+                    <td><span class="success">Build Successful</span></td>
+                    <td>All transforms and caches clean</td>
+                    <td>Cleared build cache (where stale dex references lived)</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2 id="what-we-tried">5. What We Tried (And Why It Failed)</h2>
+
+        <h4>Attempt 1: <code>./gradlew clean</code></h4>
+        <ul>
+            <li><strong>What it does:</strong> Deletes project build directory</li>
+            <li><strong>Why it failed:</strong> Doesn't touch Gradle's user cache (~/.gradle/caches/)</li>
+        </ul>
+
+        <h4>Attempt 2: <code>rm -rf ~/.gradle/caches/9.3.1/transforms</code></h4>
+        <ul>
+            <li><strong>What it does:</strong> Deletes transform cache</li>
+            <li><strong>Why it failed:</strong> Gradle re-downloads artifacts, but the <strong>build cache</strong> still has stale references to old transforms</li>
+        </ul>
+
+        <h4>Attempt 3: <code>pkexec rm -rf ~/.gradle/caches/9.3.1</code></h4>
+        <ul>
+            <li><strong>What it does:</strong> Tries to delete entire Gradle cache as root</li>
+            <li><strong>Why it failed:</strong> <code>pkexec</code> requires authentication (password). Without a TTY, it fails silently</li>
+        </ul>
+
+        <h4>Attempt 4: <code>./gradlew --stop</code> + delete transforms</h4>
+        <ul>
+            <li><strong>What it does:</strong> Stops Gradle daemon (in-memory cache) + deletes transforms</li>
+            <li><strong>Why it failed:</strong> Build cache still had stale dex file references</li>
+        </ul>
+
+        <h4>Attempt 5: <code>--no-build-cache</code></h4>
+        <ul>
+            <li><strong>What it does:</strong> Skips using build cache for this build</li>
+            <li><strong>Why it failed:</strong> The <strong>project-level</strong> cache was skipped, but the <strong>global</strong> cache still had corrupted metadata</li>
+        </ul>
+
+        <h4>Attempt 6: <code>rm ~/.gradle/caches/build-cache-*</code> + <code>--no-build-cache</code> + daemon stop</h4>
+        <ul>
+            <li><strong>What it does:</strong> Deletes global build cache + disables caching for this run + clears daemon</li>
+            <li><strong>Why it succeeded:</strong> All stale metadata cleared; transforms re-run from scratch; no cached dex references</li>
+        </ul>
+
+        <h2 id="the-fix">6. The Fix: Two-Part Solution</h2>
+
+        <p>The final fix required <strong>both</strong> parts:</p>
+
+        <h4>Part 1: Fix the Splash Screen Color</h4>
+
+        <pre><code>// BEFORE (app.json)
+"backgroundColor": "black"  // ❌ AAPT2 doesn't accept named colors
+
+// AFTER (app.json)
+"backgroundColor": "#000000"  // ✅ Valid hex color</code></pre>
+
+        <p><strong>Why:</strong> The expo-splash-screen plugin generates a color resource from the app.json value. AAPT2 requires hex values, not named colors like "black". This fixed the "Invalid &lt;color&gt;" error.</p>
+
+        <h4>Part 2: Clear Corrupted Build Cache</h4>
+
+        <pre><code>rm -rf ~/.gradle/caches/build-cache-*
+cd android
+./gradlew --stop
+./gradlew app:assembleDebug --no-build-cache</code></pre>
+
+        <p><strong>Why:</strong> The build cache had stale references to corrupted transform outputs. Clearing it forced Gradle to re-run all transforms and dex merges from scratch.</p>
+
+        <h2 id="lessons">7. Lessons Learned</h2>
+
+        <ol>
+            <li><strong>Never run Android builds in Docker as root:</strong> Always specify a user with proper permissions to avoid owning cached files as root</li>
+            <li><strong>Clean caches hierarchically:</strong> When troubleshooting builds, clear in this order:
+                <ul>
+                    <li>Project build directory (<code>./android/app/build</code>)</li>
+                    <li>Project Gradle cache (<code>./android/.gradle</code>)</li>
+                    <li>Global transforms cache (<code>~/.gradle/caches/[version]/transforms</code>)</li>
+                    <li><strong>Build cache</strong> (<code>~/.gradle/caches/build-cache-*</code>)</li>
+                    <li>Daemon (<code>./gradlew --stop</code>)</li>
+                </ul>
+            </li>
+            <li><strong>AAPT2 is strict:</strong> Always use hex colors in Android resources, even in JSON configs that generate resources</li>
+            <li><strong><code>pkexec</code> without TTY fails silently:</strong> Use <code>sudo</code> with password or configure <code>pkexec</code> to allow specific commands</li>
+            <li><strong>Error cascades in builds:</strong> One corrupted file can cause multiple different errors as the build progresses through different stages</li>
+        </ol>
+
+        <div class="footer">
+            <p>Generated during TransNet development • June 2026</p>
+        </div>
+    </div>
+</body>
+</html>

@@ -9,6 +9,8 @@ import android.provider.OpenableColumns
 import java.io.File
 import android.net.wifi.WifiManager
 import android.content.Context
+import android.content.Intent
+import androidx.core.content.FileProvider
 
 class TransnetModule : Module() {
 
@@ -276,6 +278,66 @@ class TransnetModule : Module() {
         return@AsyncFunction "Skip signalled"
       } catch (e: Exception) {
         throw Exception("Failed to signal skip: ${e.message ?: "Unknown error"}")
+      }
+    }
+
+    AsyncFunction("listReceivedFiles") { ->
+      try {
+        val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+          ?: throw Exception("Could not access external storage")
+        val transnetDir = File(downloadsDir, "TransNet")
+
+        if (!transnetDir.exists() || !transnetDir.isDirectory) {
+          return@AsyncFunction ""
+        }
+
+        val files = transnetDir.listFiles()
+          ?.filter { it.isFile && !it.name.endsWith(".part") && !it.name.startsWith(".") && !it.name.startsWith(".trashed-") }
+          ?.sortedByDescending { it.lastModified() }
+          ?: emptyList()
+
+        val result = files.joinToString("<|sep|>") { f ->
+          "${f.name}<|sep|>${f.length()}"
+        }
+
+        return@AsyncFunction result
+      } catch (e: Exception) {
+        throw Exception("Failed to list files: ${e.message ?: "Unknown error"}")
+      }
+    }
+
+    AsyncFunction("openFile") { fileName: String ->
+      try {
+        val context = appContext.reactContext ?: throw Exception("React context is null")
+        val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+          ?: throw Exception("Could not access external storage")
+        val file = File(File(downloadsDir, "TransNet"), fileName)
+
+        if (!file.exists()) {
+          throw Exception("File not found: $fileName")
+        }
+
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+
+        var mimeType = context.contentResolver.getType(uri)
+        if (mimeType == null) {
+          mimeType = android.webkit.MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(fileName.substringAfterLast('.', "").lowercase())
+            ?: "application/octet-stream"
+        }
+
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+          setDataAndType(uri, mimeType)
+          addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+          addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+        context.startActivity(Intent.createChooser(intent, "Open with").apply {
+          addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        })
+        return@AsyncFunction "Opened"
+      } catch (e: Exception) {
+        throw Exception("Failed to open file: ${e.message ?: "Unknown error"}")
       }
     }
   }

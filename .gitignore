@@ -54,10 +54,3 @@ yarn-error.*
 
 # Project
 example
-
-# PNPM
-app/.pnpm-store/
-app/pnpm-workspace.yaml
-
-# Docs
-docs/

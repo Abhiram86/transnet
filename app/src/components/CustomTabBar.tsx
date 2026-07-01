@@ -4,7 +4,7 @@ import { TabTrigger, useTabTrigger } from 'expo-router/ui';
 import { Colors } from '../constants/theme';
 import Animated, { useAnimatedStyle, withSpring } from 'react-native-reanimated';
 
-function TabButton({ name, icon }: { name: string; icon: string }) {
+function TabButton({ name, icon }: { name: string; icon: any }) {
   const { trigger } = useTabTrigger({ name });
   const isFocused = trigger?.isFocused ?? false;
 

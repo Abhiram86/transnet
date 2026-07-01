@@ -23,6 +23,21 @@ export function parseProgressStr(raw: string): TransferProgress {
   };
 }
 
+export type ReceivedFile = {
+  name: string;
+  size: number;
+};
+
+export function parseReceivedFilesStr(raw: string): ReceivedFile[] {
+  if (!raw) return [];
+  const parts = raw.split('<|sep|>');
+  const files: ReceivedFile[] = [];
+  for (let i = 0; i + 1 < parts.length; i += 2) {
+    files.push({ name: parts[i], size: parseInt(parts[i + 1], 10) || 0 });
+  }
+  return files;
+}
+
 class TransnetModuleStub {
   testBridge = async (_value: string): Promise<string> => 'stub';
   initCore = async (): Promise<string> => 'stub';
@@ -41,6 +56,8 @@ class TransnetModuleStub {
   cancelClientTransfer = async (): Promise<string> => 'stub';
   cancelServerTransfer = async (): Promise<string> => 'stub';
   signalSkipCurrentFile = async (): Promise<string> => 'stub';
+  listReceivedFiles = async (): Promise<string> => '';
+  openFile = async (_fileName: string): Promise<string> => 'stub';
 }
 
 const Transnet = Platform.OS === 'web'

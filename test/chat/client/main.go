@@ -94,6 +94,7 @@ func main() {
 	filePaths := []string{
 		"anime_scenary.jpg",
 		"uwp4766922.png",
+		"lucys_apartment_fixed.mp4",
 		"Abhiram Alla - Resume.pdf",
 	}
 
