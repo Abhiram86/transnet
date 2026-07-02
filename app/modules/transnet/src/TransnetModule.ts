@@ -58,6 +58,8 @@ class TransnetModuleStub {
   signalSkipCurrentFile = async (): Promise<string> => 'stub';
   listReceivedFiles = async (): Promise<string> => '';
   openFile = async (_fileName: string): Promise<string> => 'stub';
+  isExternalStorageManager = async (): Promise<boolean> => false;
+  requestExternalStorageManager = async (): Promise<string> => 'stub';
 }
 
 const Transnet = Platform.OS === 'web'

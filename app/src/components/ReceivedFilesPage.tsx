@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, FlatList} from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, FlatList, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming, Easing } from 'react-native-reanimated';
@@ -41,6 +41,7 @@ export const ReceivedFilesPage = ({ visible, onClose }: Props) => {
   const translateX = useSharedValue(-400);
   const [files, setFiles] = useState<ReceivedFile[]>([]);
   const [loading, setLoading] = useState(false);
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
 
   useEffect(() => {
     translateX.value = withTiming(visible ? 0 : -400, {
@@ -49,17 +50,30 @@ export const ReceivedFilesPage = ({ visible, onClose }: Props) => {
     });
 
     if (visible) {
-      loadFiles();
+      checkAndLoad();
     }
   }, [visible]);
+
+  const checkAndLoad = useCallback(async () => {
+    try {
+      const granted = await Transnet.isExternalStorageManager();
+      setHasPermission(granted);
+      if (granted) {
+        await loadFiles();
+      }
+    } catch {
+      setHasPermission(false);
+    }
+  }, []);
 
   const loadFiles = useCallback(async () => {
     setLoading(true);
     try {
       const raw = await Transnet.listReceivedFiles();
       setFiles(parseReceivedFilesStr(raw));
-    } catch {
+    } catch (e: any) {
       setFiles([]);
+      Alert.alert('Error', e?.message || 'Failed to list files');
     } finally {
       setLoading(false);
     }
@@ -68,8 +82,22 @@ export const ReceivedFilesPage = ({ visible, onClose }: Props) => {
   const handleOpen = async (fileName: string) => {
     try {
       await Transnet.openFile(fileName);
+    } catch (e: any) {
+      Alert.alert('Could not open file', e?.message || 'Unknown error');
+    }
+  };
+
+  const handleGrantPermission = async () => {
+    try {
+      await Transnet.requestExternalStorageManager();
     } catch {}
   };
+
+  useEffect(() => {
+    if (visible && hasPermission === true) {
+      loadFiles();
+    }
+  }, [hasPermission, visible]);
 
   const pageStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
@@ -90,7 +118,21 @@ export const ReceivedFilesPage = ({ visible, onClose }: Props) => {
           </TouchableOpacity>
         </View>
 
-        {files.length > 0 && (
+        {hasPermission === false && (
+          <View style={styles.permissionCard}>
+            <MaterialCommunityIcons name="shield-alert-outline" size={32} color={Colors.accent} />
+            <Text style={styles.permissionTitle}>Storage access needed</Text>
+            <Text style={styles.permissionText}>
+              TransNet needs access to files in your Downloads folder. Tap below to enable it in system settings.
+            </Text>
+            <TouchableOpacity style={styles.permissionButton} onPress={handleGrantPermission} activeOpacity={0.7}>
+              <MaterialCommunityIcons name="cog-outline" size={18} color={Colors.background} />
+              <Text style={styles.permissionButtonText}>Open settings</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {hasPermission === true && files.length > 0 && (
           <View style={styles.statsBar}>
             <View style={styles.stat}>
               <Text style={styles.statValue}>{files.length}</Text>
@@ -104,17 +146,21 @@ export const ReceivedFilesPage = ({ visible, onClose }: Props) => {
           </View>
         )}
 
-        {loading && files.length === 0 ? (
+        {hasPermission === true && loading && files.length === 0 && (
           <View style={styles.emptyState}>
             <Text style={styles.emptyText}>Loading...</Text>
           </View>
-        ) : files.length === 0 ? (
+        )}
+
+        {hasPermission === true && !loading && files.length === 0 && (
           <View style={styles.emptyState}>
             <MaterialCommunityIcons name="folder-open-outline" size={64} color={Colors.surfaceLight} />
             <Text style={styles.emptyText}>No received files yet</Text>
             <Text style={styles.emptySubtext}>Files you receive will appear here</Text>
           </View>
-        ) : (
+        )}
+
+        {hasPermission === true && files.length > 0 && (
           <FlatList
             data={files}
             keyExtractor={item => item.name}
@@ -229,5 +275,40 @@ const styles = StyleSheet.create({
   fileSize: {
     color: Colors.textMuted,
     fontSize: 12,
+  },
+  permissionCard: {
+    marginHorizontal: 16,
+    marginTop: 20,
+    padding: 20,
+    backgroundColor: Colors.surface,
+    borderRadius: 14,
+    alignItems: 'center',
+    gap: 10,
+  },
+  permissionTitle: {
+    color: Colors.text,
+    fontSize: 17,
+    fontWeight: 'bold',
+  },
+  permissionText: {
+    color: Colors.textMuted,
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  permissionButton: {
+    flexDirection: 'row',
+    backgroundColor: Colors.accent,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  permissionButtonText: {
+    color: Colors.background,
+    fontWeight: 'bold',
+    fontSize: 15,
   },
 });

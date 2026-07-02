@@ -4,6 +4,8 @@ import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import core.Core
 import android.os.Environment
+import android.os.Build
+import android.provider.Settings
 import android.net.Uri
 import android.provider.OpenableColumns
 import java.io.File
@@ -338,6 +340,42 @@ class TransnetModule : Module() {
         return@AsyncFunction "Opened"
       } catch (e: Exception) {
         throw Exception("Failed to open file: ${e.message ?: "Unknown error"}")
+      }
+    }
+
+    AsyncFunction("isExternalStorageManager") { ->
+      try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+          return@AsyncFunction Environment.isExternalStorageManager()
+        }
+        val context = appContext.reactContext ?: throw Exception("React context is null")
+        val permission = android.Manifest.permission.READ_EXTERNAL_STORAGE
+        val granted = context.checkSelfPermission(permission)
+        return@AsyncFunction granted == android.content.pm.PackageManager.PERMISSION_GRANTED
+      } catch (e: Exception) {
+        return@AsyncFunction false
+      }
+    }
+
+    AsyncFunction("requestExternalStorageManager") { ->
+      try {
+        val context = appContext.reactContext ?: throw Exception("React context is null")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+          val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+            data = Uri.parse("package:${context.packageName}")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+          }
+          context.startActivity(intent)
+        } else {
+          val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.parse("package:${context.packageName}")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+          }
+          context.startActivity(intent)
+        }
+        return@AsyncFunction "Permission request opened"
+      } catch (e: Exception) {
+        throw Exception("Failed to open permission settings: ${e.message ?: "Unknown error"}")
       }
     }
   }
