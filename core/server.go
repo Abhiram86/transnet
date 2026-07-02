@@ -50,7 +50,24 @@ func handleConnection(ctx context.Context, cancel context.CancelFunc, conn net.C
 			default:
 			}
 
-			fileName, err := receiveSingleFile(ctx, reader, saveDir)
+			header, err := reader.ReadString('\n')
+			if err != nil {
+				setServerStatus("error reading header: " + err.Error())
+				return
+			}
+			details := strings.Split(strings.TrimSpace(header), "<|sep|>")
+			if len(details) < 2 {
+				setServerStatus("error: invalid header")
+				return
+			}
+			fileName := filepath.Base(details[0])
+
+			updateServerProgress(func(p *Progress) {
+				p.CurrentFileIdx = i
+				p.CurrentFileName = fileName
+			})
+
+			err = receiveSingleFile(ctx, reader, saveDir, fileName, details[1])
 			if err != nil {
 				if ctx.Err() != nil {
 					setServerStatus("cancelled")
@@ -59,10 +76,6 @@ func handleConnection(ctx context.Context, cancel context.CancelFunc, conn net.C
 				}
 				return
 			}
-			updateServerProgress(func(p *Progress) {
-				p.CurrentFileIdx = i
-				p.CurrentFileName = fileName
-			})
 			fmt.Printf("File %d/%d received\n", i+1, numFiles)
 		}
 
@@ -76,26 +89,16 @@ func SignalSkipCurrentFile() {
 	skipCurrentFile.Store(true)
 }
 
-func receiveSingleFile(ctx context.Context, reader *bufio.Reader, saveDir string) (string, error) {
-	header, err := reader.ReadString('\n')
+func receiveSingleFile(ctx context.Context, reader *bufio.Reader, saveDir string, fileName string, fileSizeStr string) error {
+	fileSize, err := strconv.ParseInt(fileSizeStr, 10, 64)
 	if err != nil {
-	return "", fmt.Errorf("reading header: %v", err)
-	}
-
-	details := strings.Split(strings.TrimSpace(header), "<|sep|>")
-	if len(details) < 2 {
-		return "", fmt.Errorf("invalid header format")
-	}
-	fileName := filepath.Base(details[0])
-	fileSize, err := strconv.ParseInt(details[1], 10, 64)
-	if err != nil {
-		return "", fmt.Errorf("invalid file size: %v", err)
+		return fmt.Errorf("invalid file size: %v", err)
 	}
 
 	partPath := saveDir + "/" + fileName + ".part"
 	outFile, err := os.Create(partPath)
 	if err != nil {
-		return "", fmt.Errorf("creating file: %v", err)
+		return fmt.Errorf("creating file: %v", err)
 	}
 
 	buf := make([]byte, 32*1024)
@@ -109,7 +112,7 @@ func receiveSingleFile(ctx context.Context, reader *bufio.Reader, saveDir string
 		case <-ctx.Done():
 			outFile.Close()
 			os.Remove(partPath)
-			return "", ctx.Err()
+			return ctx.Err()
 		default:
 		}
 
@@ -131,7 +134,7 @@ func receiveSingleFile(ctx context.Context, reader *bufio.Reader, saveDir string
 					if drainErr == io.EOF {
 						break
 					}
-					return "", fmt.Errorf("draining skipped file: %w", drainErr)
+					return fmt.Errorf("draining skipped file: %w", drainErr)
 				}
 			}
 
@@ -142,7 +145,7 @@ func receiveSingleFile(ctx context.Context, reader *bufio.Reader, saveDir string
 			})
 
 			fmt.Printf("Skipped file: %s\n", fileName)
-			return fileName, nil
+			return nil
 		}
 
 		remaining := fileSize - received
@@ -160,12 +163,12 @@ func receiveSingleFile(ctx context.Context, reader *bufio.Reader, saveDir string
 				if writeErr != nil {
 				outFile.Close()
 				os.Remove(partPath)
-				return "", fmt.Errorf("writing file: %w", writeErr)
+				return fmt.Errorf("writing file: %w", writeErr)
 				}
 				if written == 0 {
 				outFile.Close()
 				os.Remove(partPath)
-				return "", fmt.Errorf("writing file: wrote 0 bytes without error")
+				return fmt.Errorf("writing file: wrote 0 bytes without error")
 				}
 				writtenTotal += written
 			}
@@ -194,7 +197,7 @@ func receiveSingleFile(ctx context.Context, reader *bufio.Reader, saveDir string
 		if err != nil {
 			outFile.Close()
 			os.Remove(partPath)
-			return "", fmt.Errorf("reading data: %w", err)
+			return fmt.Errorf("reading data: %w", err)
 		}
 	}
 
@@ -203,7 +206,7 @@ func receiveSingleFile(ctx context.Context, reader *bufio.Reader, saveDir string
 	finalPath := saveDir + "/" + fileName
 	if renameErr := os.Rename(partPath, finalPath); renameErr != nil {
 		os.Remove(partPath)
-		return "", fmt.Errorf("renaming part file: %w", renameErr)
+		return fmt.Errorf("renaming part file: %w", renameErr)
 	}
 
 	if !skipped {
@@ -214,7 +217,7 @@ func receiveSingleFile(ctx context.Context, reader *bufio.Reader, saveDir string
 		})
 	}
 
-	return fileName, nil
+	return nil
 }
 
 func StartServer(port, saveDir string) (string, error) {
